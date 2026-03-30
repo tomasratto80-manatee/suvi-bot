@@ -1,6 +1,7 @@
 'use strict';
 
 require('dotenv').config();
+const http        = require('http');
 const TelegramBot = require('node-telegram-bot-api');
 const Anthropic   = require('@anthropic-ai/sdk');
 const { getProximosVencimientos, formatearVencimientosCuit, validarCuit } = require('./vencimientos');
@@ -270,5 +271,12 @@ bot.on('message', async (msg) => {
     bot.sendMessage(chatId, '⚠️ Hubo un error al procesar tu consulta. Intentá de nuevo en unos momentos.');
   }
 });
+
+// Servidor HTTP mínimo para mantener el proceso vivo en Render
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end('OK');
+}).listen(PORT);
 
 console.log('🤖 Suvi Bot iniciado correctamente.');
