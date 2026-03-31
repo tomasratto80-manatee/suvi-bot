@@ -7,8 +7,10 @@ const Anthropic   = require('@anthropic-ai/sdk');
 const { getProximosVencimientos, formatearVencimientosCuit, validarCuit } = require('./vencimientos');
 const { agregarCliente, eliminarCliente, buscarCliente, listarClientes, formatCuit } = require('./clientes');
 
-// clean:true descarta updates pendientes de sesiones anteriores al arrancar
-const bot       = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: { clean: true } });
+const WEBHOOK_URL = 'https://suvi-bot.onrender.com/webhook';
+
+// Sin polling — los updates llegan por webhook
+const bot       = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const OPTS_MD = { parse_mode: 'Markdown', disable_web_page_preview: true };
@@ -48,13 +50,6 @@ async function consultarClaude(userId, pregunta) {
   agregarMensaje(userId, 'assistant', respuesta);
   return respuesta;
 }
-
-// ---------------------------------------------------------------------------
-// Limpiar listeners antes de registrar (evita duplicados en hot-reload)
-// ---------------------------------------------------------------------------
-// Garantiza un solo set de handlers aunque el módulo se cargue más de una vez
-bot.removeAllListeners('message');
-bot._textRegexpCallbacks = [];
 
 // ---------------------------------------------------------------------------
 // /start
@@ -272,11 +267,33 @@ bot.on('message', async (msg) => {
   }
 });
 
-// Servidor HTTP mínimo para mantener el proceso vivo en Render
+// Servidor HTTP — recibe updates de Telegram por webhook
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end('OK');
-}).listen(PORT);
+  if (req.method === 'POST' && req.url === '/webhook') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        bot.processUpdate(JSON.parse(body));
+      } catch (e) {
+        console.error('Error al parsear update:', e.message);
+      }
+      res.writeHead(200);
+      res.end('OK');
+    });
+  } else {
+    res.writeHead(200);
+    res.end('OK');
+  }
+}).listen(PORT, async () => {
+  console.log(`Servidor escuchando en puerto ${PORT}`);
+  try {
+    await bot.setWebHook(WEBHOOK_URL);
+    console.log(`Webhook registrado: ${WEBHOOK_URL}`);
+  } catch (e) {
+    console.error('Error al registrar webhook:', e.message);
+  }
+});
 
 console.log('🤖 Suvi Bot iniciado correctamente.');
